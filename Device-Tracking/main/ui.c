@@ -1,6 +1,6 @@
 /*
  * AWS IoT EduKit - Core2 for AWS IoT EduKit
- * Smart Thermostat v1.3.1
+ * Device Tracking v0.1.0
  * ui.c
  * 
  * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
@@ -104,6 +104,6 @@ void ui_init() {
     lv_textarea_set_max_length(out_txtarea, MAX_TEXTAREA_LENGTH);
     lv_textarea_set_text_sel(out_txtarea, false);
     lv_textarea_set_cursor_hidden(out_txtarea, true);
-    lv_textarea_set_text(out_txtarea, "Starting Smart Thermostat\n");
+    lv_textarea_set_text(out_txtarea, "Starting Device Tracking\n");
     xSemaphoreGive(xGuiSemaphore);
 }
