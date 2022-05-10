@@ -28,6 +28,14 @@
 
 static const char *TAG = "WIFI";
 
+void wifi_wait_for_connection_up(void) {
+    EventBits_t uxBits = xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true, portMAX_DELAY);
+
+    if(CONNECTED_BIT != uxBits) {
+        ESP_LOGE(TAG, "Unexpected state while awaiting a network connection: %u", uxBits);
+    }
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data){
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
