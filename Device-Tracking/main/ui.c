@@ -55,7 +55,7 @@ static void ui_textarea_prune(size_t new_text_length){
     }
 }
 
-void ui_textarea_add(char *baseTxt, char *param, size_t paramLen) {
+void ui_textarea_add(const char *baseTxt, const char *param, size_t paramLen) {
     if( baseTxt != NULL ){
         xSemaphoreTake(xGuiSemaphore, portMAX_DELAY);
         if (param != NULL && paramLen != 0){

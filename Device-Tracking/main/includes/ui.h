@@ -25,6 +25,6 @@
 
 #pragma once
 
-void ui_textarea_add(char *txt, char *param, size_t paramLen);
+void ui_textarea_add(const char *txt, const char *param, size_t paramLen);
 void ui_wifi_label_update(bool state);
 void ui_init();
