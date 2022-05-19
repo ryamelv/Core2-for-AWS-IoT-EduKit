@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <string.h>
+#include <time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -40,6 +41,7 @@
 #include "aws_iot_mqtt_client_interface.h"
 
 #include "core2forAWS.h"
+#include "esp_sntp.h"
 
 #include "wifi.h"
 #include "iot.h"
@@ -50,9 +52,11 @@
 // Logging identifier for this module.
 static const char *TAG = "MAIN";
 
-// GPS location point (currently a place holder).
+// GPS location point.
 struct GpsPoint {
-    int tbd;
+    time_t sampleTime;
+    double lon;
+    double lat;
 };
 
 // Local buffer/queue for GPS points to upload to AWS IoT.
@@ -63,7 +67,8 @@ QueueHandle_t xGpsPointsQueue;
 char clientId[CLIENT_ID_LEN] = "<UNK>";
 
 // AWS IoT MQTT topic: "<client_id>/location". Only valid after init().
-#define MQTT_TOPIC_NAME_LEN (CLIENT_ID_LEN + 9)
+const char mqttTopicNamePostfix[] = "/location";
+#define MQTT_TOPIC_NAME_LEN (CLIENT_ID_LEN + sizeof(mqttTopicNamePostfix))
 char mqttTopicName[MQTT_TOPIC_NAME_LEN] = "<UNK>";
 
 
@@ -73,7 +78,7 @@ void check_task_stack_usage() {
     const UBaseType_t taskStackHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
     const UBaseType_t inBytes = (taskStackHighWaterMark * 4);                        // Assuming 32-bit CPU
 
-    ESP_LOGI(TAG, "Task '%s' min unused stack: %d bytes", taskName, inBytes);
+    ESP_LOGD(TAG, "Task '%s' min unused stack: %d bytes", taskName, inBytes);
 
     if(512 > inBytes) {
         ESP_LOGW(TAG, "Task '%s' stack may be undersized.", taskName);
@@ -95,16 +100,21 @@ void produce_gps_points_task(void *param) {
         // Pause here to produce GPS points at a given frequency.
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
-        // create GPS point
-        gpsPoint.tbd = 7;
-        ESP_LOGI(TAG, "Producing GPS Point: %d", gpsPoint.tbd);
+        // TODO: Gather (more) real GPS points.
+        gpsPoint.sampleTime = time(NULL);
+        gpsPoint.lon = -93.27496274166202;
+        gpsPoint.lat = 44.984378622806226;
 
-        // store to queue
+        //ESP_LOGI(TAG, "Producing GPS Point: %ld [%lf, %lf]", gpsPoint.sampleTime, gpsPoint.lon, gpsPoint.lat);
+
+        // Store to queue.
         rc = xQueueSendToBack(xGpsPointsQueue, &gpsPoint, 0);
 
         if(pdTRUE != rc){
             ESP_LOGW(TAG, "GPS points queue full; discarding GPS point.");
         }
+
+        check_task_stack_usage();
     }
 
     ESP_LOGE(TAG, "Fatal error in produce_gps_points task.");
@@ -113,24 +123,16 @@ void produce_gps_points_task(void *param) {
 }
 
 
-IoT_Error_t publish_one_mqtt_message(AWS_IoT_Client* aws_iot_client, struct GpsPoint* gpsPoint) {
-    char cPayload[100];
+IoT_Error_t publish_one_gps_point(AWS_IoT_Client* aws_iot_client, struct GpsPoint* gpsPoint) {
+    static const char example[] =
+        "{ 'SampleTime': 1652985753, 'Position': [ -93.274963, 44.984379 ] }";
 
-    sprintf(cPayload, "%s (%d)", "Hello from AWS IoT EduKit ", gpsPoint->tbd);
+    static char msgBuf[sizeof(example) * 2];
 
-    IoT_Publish_Message_Params paramsQOS0;
+    sprintf(msgBuf, "{ \"SampleTime\": %ld, \"Position\": [ %lf, %lf ] }",
+        gpsPoint->sampleTime, gpsPoint->lon, gpsPoint->lat);
 
-    paramsQOS0.qos = QOS0;
-    paramsQOS0.isRetained = 0;
-    paramsQOS0.payload = (void *) cPayload;
-    paramsQOS0.payloadLen = strlen(cPayload);
-
-    // Publish and ignore if "ack" was received or from AWS IoT Core
-    IoT_Error_t rc = aws_iot_mqtt_publish(aws_iot_client, mqttTopicName, strlen(mqttTopicName), &paramsQOS0);
-
-    if (rc != SUCCESS){
-        ESP_LOGW(TAG, "aws_iot_mqtt_publish() error: %d ", rc);
-    }
+    IoT_Error_t rc = aws_iot_client_publish(aws_iot_client, mqttTopicName, msgBuf);
 
     return(rc);
 }
@@ -162,13 +164,12 @@ void upload_gps_points_task(void* param) {
         const TickType_t xBlockTime = pdMS_TO_TICKS(10000);
         rc = xQueuePeek(xGpsPointsQueue, &gpsPoint, xBlockTime);
 
+        // Message received; upload to AWS IoT.
         if(pdTRUE == rc) {
-            // Received a queue item.
-            ESP_LOGI(TAG, "Uploading GPS Point: %d", gpsPoint.tbd);
-            // upload to AWS IoT message topic
-            iot_rc = publish_one_mqtt_message(&aws_iot_client, &gpsPoint);
+            iot_rc = publish_one_gps_point(&aws_iot_client, &gpsPoint);
 
             if(SUCCESS == iot_rc) {
+                // Above only peeked; remove sent message from queue.
                 rc = xQueueReceive(xGpsPointsQueue, &gpsPoint, 0);
 
                 if(pdTRUE != rc) {
@@ -183,6 +184,8 @@ void upload_gps_points_task(void* param) {
         if(SUCCESS != iot_rc) {
             ESP_LOGW(TAG, "aws_iot_mqtt_yield() returned: %d ", iot_rc);
         }
+
+        check_task_stack_usage();
     }
 
     ESP_LOGE(TAG, "Fatal error in upload_gps_points task.");
@@ -214,11 +217,18 @@ void init() {
     ui_init();
     initialise_wifi();
 
+    // Accurate time is needed to timestamp the GPS points.
+    wifi_wait_for_connection_up();
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, "pool.ntp.org");
+    sntp_init();
+
     if(!get_client_id()) {
         abort();
     }
 
-    sprintf(mqttTopicName, "%s/location", clientId);
+    // Can set the MQTT topic now that the client id is available.
+    sprintf(mqttTopicName, "%s%s", clientId, mqttTopicNamePostfix);
 }
 
 
