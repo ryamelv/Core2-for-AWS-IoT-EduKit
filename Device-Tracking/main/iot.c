@@ -38,19 +38,17 @@
 // Logging identifier for this module.
 static const char *TAG = "IOT";
 
-// Use identifiers from aws_iot_config.h, but AWS account/region specific values ultimately comes from sdkconfig.
+// Use identifiers from aws_iot_config.h, but AWS account/region specific values ultimately come from sdkconfig.
 // Need a char buffer only because IoT_Client_Init_Params.pHostURL requires a (non-cost) char*.
-char awsIotMqttHostUrl[255] = AWS_IOT_MQTT_HOST;
+char awsIotMqttHostUrl[] = AWS_IOT_MQTT_HOST;
 const uint16_t awsIotMqttHostPort = AWS_IOT_MQTT_PORT;
 
 // AWS Root Certificate Authority certificate.
-//extern const uint8_t aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 extern const char aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 
 
 void aws_iot_client_disconnect_handler(AWS_IoT_Client* aws_iot_client, void* data) {
     ESP_LOGW(TAG, "AWS IoT Client Disconnect; Auto-reconnecting...");
-    ui_textarea_add("Disconnected from AWS IoT Core...", NULL, 0);
 }
 
 
@@ -60,7 +58,6 @@ IoT_Error_t aws_iot_client_init(AWS_IoT_Client* aws_iot_client) {
     initParams.pHostURL = awsIotMqttHostUrl;
     initParams.port = awsIotMqttHostPort;
 
-    //initParams.pRootCALocation = (const char *) aws_root_ca_pem_start;
     initParams.pRootCALocation = aws_root_ca_pem_start;
 
     initParams.pDeviceCertLocation = "#";
@@ -125,4 +122,24 @@ IoT_Error_t aws_iot_client_connect(AWS_IoT_Client* aws_iot_client, const char* c
 
     // Return value is based on connection, not enabling auto-reconnect.
     return(SUCCESS);
+}
+
+
+IoT_Error_t aws_iot_client_publish(AWS_IoT_Client* aws_iot_client, const char* topic, const char* msg) {
+    IoT_Publish_Message_Params params;
+
+    params.qos = QOS0;
+    params.isRetained = 0;
+    params.payload = (void *) msg;
+    params.payloadLen = strlen(msg);
+
+    ESP_LOGI(TAG, "Publishing MQTT Message: [%s] %s", topic, msg);
+
+    IoT_Error_t rc = aws_iot_mqtt_publish(aws_iot_client, topic, strlen(topic), &params);
+
+    if (rc != SUCCESS){
+        ESP_LOGW(TAG, "aws_iot_mqtt_publish() error: %d ", rc);
+    }
+
+    return(rc);
 }

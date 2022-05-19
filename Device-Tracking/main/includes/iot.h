@@ -28,3 +28,4 @@
 
 IoT_Error_t aws_iot_client_init(AWS_IoT_Client* aws_iot_client);
 IoT_Error_t aws_iot_client_connect(AWS_IoT_Client* aws_iot_client, const char* clientId);
+IoT_Error_t aws_iot_client_publish(AWS_IoT_Client* aws_iot_client, const char* topic, const char* msg);
