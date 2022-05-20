@@ -23,11 +23,35 @@
  */
 #include <stdint.h>
 
-// Cadence of reading GPS location points locally, for buffering and uploading to AWS IoT, in milliseconds.
-static const uint32_t gpsPointPeriodInMs = 10000;
+// Cadence of sampling GPS location points for upload to AWS IoT, in milliseconds.
+const uint32_t GPS_POINT_PERIOD_IN_MS = 1000;
 
 // GPS location point buffer size, in minutes. Used when, for example, network connection is down.
-static const uint32_t gpsPointBufferDurationInMin = 10;
+const uint32_t GPS_POINT_BUFFER_DURATION_IN_MIN = 10;
 
-// Calculated milliseconds version of gpsPointBufferDurationInMin.
-static const uint32_t gpsPointBufferDurationInMs = gpsPointBufferDurationInMin * 60 * 1000;
+// Calculated milliseconds version of GPS_POINT_BUFFER_DURATION_IN_MIN.
+const uint32_t GPS_POINT_BUFFER_DURATION_IN_MS = GPS_POINT_BUFFER_DURATION_IN_MIN * 60 * 1000;
+
+// Mocking is smoother if accelerometer is sampled quickly - faster than the desired GPS point upload rate.
+// Should be an even divisor of GPS_POINT_PERIOD_IN_MS above for accurate smoothing.
+const uint32_t GPS_MOCK_CALC_PERIOD_IN_MS = 100;
+
+// Mock GPS is not absolute; it must be relative to a given starting point.
+const double GPS_MOCK_START_LAT = 44.98421;
+const double GPS_MOCK_START_LON = -93.27502;
+
+// Whether to mock GPS points (i.e., 'drive' based on tilting the EduKit) or use GPS hardware module accessory.
+bool gpsMock = true;
+
+// Mock GPS movement scale (multiplier of tilt angle to velocity).
+enum MockScale {
+    WALKING = 1,      // ~6 MPH max
+    DRIVING = 10,     // ~60 MPH max
+    FLYING  = 100     // ~600 MPH max
+};
+
+enum MockScale gpsMockScale = DRIVING;
+
+// Optionally apply an offset to accelerometer values read from hardware (ex: compensate for uneven work surface).
+float gpsMockAccelOffsetX = 0.05;
+float gpsMockAccelOffsetY = 0.00;
