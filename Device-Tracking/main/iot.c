@@ -94,7 +94,7 @@ IoT_Error_t aws_iot_client_connect(AWS_IoT_Client* aws_iot_client, const char* c
     connectParams.isWillMsgPresent = false;
     connectParams.keepAliveIntervalInSec = 10;
 
-    ui_textarea_add("Connecting to AWS IoT Core...\n", NULL, 0);
+    ui_out_txt_add("Connecting to AWS IoT Core...\n", NULL, 0);
 
     IoT_Error_t rc = SUCCESS;
 
@@ -110,7 +110,7 @@ IoT_Error_t aws_iot_client_connect(AWS_IoT_Client* aws_iot_client, const char* c
 
     } while(SUCCESS != rc);
 
-    ui_textarea_add("Successfully connected!\n", NULL, 0);
+    ui_out_txt_add("Connected to AWS IoT Core.\n", NULL, 0);
     ESP_LOGI(TAG, "Connected to AWS IoT Core.");
 
     // Enable auto-reconnect (must be done after first connect).

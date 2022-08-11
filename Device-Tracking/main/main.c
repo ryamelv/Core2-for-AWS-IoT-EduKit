@@ -72,6 +72,9 @@ const char mqttTopicNamePostfix[] = "/location";
 #define MQTT_TOPIC_NAME_LEN (CLIENT_ID_LEN + sizeof(mqttTopicNamePostfix))
 char mqttTopicName[MQTT_TOPIC_NAME_LEN] = "<UNK>";
 
+// Optionally pause GPS point production (perhaps while out of WiFi range).
+bool paused = false;
+
 
 void check_task_stack_usage() {
     const char* const taskName = pcTaskGetTaskName(NULL);
@@ -168,7 +171,7 @@ void produce_gps_points_task(void *param) {
         get_gps_point(&gpsPoint);
 
         // If mocking GPS points, only produce at the desired upload rate despite calculating (looping) more frequently.
-        if(0 == loops) {
+        if(0 == loops && !paused) {
             ESP_LOGD(TAG, "Producing GPS Point: %ld [%lf, %lf]", gpsPoint.sampleTime, gpsPoint.lon, gpsPoint.lat);
 
             // Store to queue.
@@ -267,10 +270,42 @@ bool get_client_id() {
     }
     else {
         ESP_LOGI(TAG, "ATECC608 SN# = AWS IoT Device Client ID = '%s'", clientId);
-        ui_textarea_add("\nAWS IoT Device Client ID:\n>> %s <<\n", clientId, CLIENT_ID_LEN);
     }
 
     return(ATCA_SUCCESS == rc);
+}
+
+
+const char* MockModeText() {
+    return( gpsMock ? "Mock" : "GPS" );
+}
+
+
+const char* MockScaleText () {
+    return( (WALKING == gpsMockScale) ? "Walk" : (DRIVING == gpsMockScale) ? "Drive" : "Fly" );
+}
+
+
+const char* PausedText() {
+    return( paused ? "Paused" : "Active" );
+}
+
+
+void on_btn_event(UiButton btn, lv_event_t event) {
+    if(LV_EVENT_PRESSED == event) {
+        if(BTN_LEFT == btn) {
+            gpsMock = !gpsMock;
+            ui_btn_txt_set(btn, MockModeText());
+        }
+        else if(BTN_CENTER == btn) {
+            gpsMockScale = (WALKING == gpsMockScale) ? DRIVING : (DRIVING == gpsMockScale) ? FLYING : WALKING;
+            ui_btn_txt_set(btn, MockScaleText());
+        }
+        else if(BTN_RIGHT == btn) {
+            paused = !paused;
+            ui_btn_txt_set(btn, PausedText());
+        }
+    }
 }
 
 
@@ -294,6 +329,19 @@ void init() {
 
     // Can set the MQTT topic now that the client id is available.
     sprintf(mqttTopicName, "%s%s", clientId, mqttTopicNamePostfix);
+
+    // display
+    ui_hdr_txt_set("ID: %s", clientId, CLIENT_ID_LEN);
+    ui_out_txt_add("Device Tracking\n", NULL, 0);
+
+    // buttons
+    ui_btn_txt_set(BTN_LEFT, MockModeText());
+    ui_btn_txt_set(BTN_CENTER, MockScaleText());
+    ui_btn_txt_set(BTN_RIGHT, PausedText());
+
+    ui_btn_event_cb_set(BTN_LEFT, on_btn_event);
+    ui_btn_event_cb_set(BTN_CENTER, on_btn_event);
+    ui_btn_event_cb_set(BTN_RIGHT, on_btn_event);
 }
 
 
